@@ -14,14 +14,14 @@ const upload = multer({
 });
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'audio-converter', version: '2.0.0' });
+  res.json({ status: 'ok', service: 'audio-converter', version: '2.1.0' });
 });
 
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Endpoint principal: recibe WEBM, devuelve OGG/Opus (formato para nota de voz WhatsApp)
+// Endpoint principal: recibe audio en cualquier formato, devuelve OGG/Opus para nota de voz WhatsApp
 app.post('/convert', upload.single('audio'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No audio file provided' });
@@ -34,37 +34,18 @@ app.post('/convert', upload.single('audio'), (req, res) => {
 
   ffmpeg(inputPath)
     .audioCodec('libopus')
-    .audioBitrate('32k')
+    .audioBitrate('64k')
     .audioChannels(1)
-    .audioFrequency(16000)
+    .audioFrequency(48000)
     .format('ogg')
     .outputOptions([
-      '-application voip',
+      '-application audio',
       '-vbr on',
-      '-compression_level 10'
+      '-compression_level 10',
+      '-page_duration 20000',
+      '-frame_duration 60'
     ])
     .on('end', () => {
       console.log('Conversion to OGG/Opus completed');
       
-      res.setHeader('Content-Type', 'audio/ogg');
-      res.setHeader('Content-Disposition', 'attachment; filename="voice-note.ogg"');
-      
-      const stream = fs.createReadStream(outputPath);
-      stream.pipe(res);
-      
-      stream.on('end', () => {
-        fs.unlink(inputPath, () => {});
-        fs.unlink(outputPath, () => {});
-      });
-    })
-    .on('error', (err) => {
-      console.error('Conversion error:', err.message);
-      fs.unlink(inputPath, () => {});
-      res.status(500).json({ error: 'Conversion failed', detail: err.message });
-    })
-    .save(outputPath);
-});
-
-app.listen(PORT, () => {
-  console.log(`Audio converter service running on port ${PORT}`);
-});
+      res.setHeader('Content
