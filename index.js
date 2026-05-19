@@ -8,49 +8,51 @@ const os = require('os');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurar multer para archivos temporales
 const upload = multer({ 
   dest: os.tmpdir(),
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB max
+  limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-// Healthcheck
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'audio-converter', version: '1.0.0' });
+  res.json({ status: 'ok', service: 'audio-converter', version: '2.0.0' });
 });
 
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Endpoint principal: recibe WEBM, devuelve MP3
+// Endpoint principal: recibe WEBM, devuelve OGG/Opus (formato para nota de voz WhatsApp)
 app.post('/convert', upload.single('audio'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No audio file provided' });
   }
 
   const inputPath = req.file.path;
-  const outputPath = path.join(os.tmpdir(), `${Date.now()}.mp3`);
+  const outputPath = path.join(os.tmpdir(), `${Date.now()}.ogg`);
 
   console.log(`Converting: ${inputPath} -> ${outputPath}`);
 
   ffmpeg(inputPath)
-    .audioCodec('libmp3lame')
-    .audioBitrate('64k')
+    .audioCodec('libopus')
+    .audioBitrate('32k')
     .audioChannels(1)
-    .audioFrequency(44100)
-    .format('mp3')
+    .audioFrequency(16000)
+    .format('ogg')
+    .outputOptions([
+      '-application voip',
+      '-vbr on',
+      '-compression_level 10'
+    ])
     .on('end', () => {
-      console.log('Conversion completed');
+      console.log('Conversion to OGG/Opus completed');
       
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Disposition', 'attachment; filename="voice-note.mp3"');
+      res.setHeader('Content-Type', 'audio/ogg');
+      res.setHeader('Content-Disposition', 'attachment; filename="voice-note.ogg"');
       
       const stream = fs.createReadStream(outputPath);
       stream.pipe(res);
       
       stream.on('end', () => {
-        // Limpiar archivos temporales
         fs.unlink(inputPath, () => {});
         fs.unlink(outputPath, () => {});
       });
